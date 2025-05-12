@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CSDT5205 - NFT Certificate Viewer</title>
+  <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+  <style>
+    body { font-family: sans-serif; background: #f2f6fa; padding: 20px; text-align: center; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; }
+    .header img { height: 80px; margin: 10px; }
+    .title-section { margin: 20px 0; }
+    .title-section h1 { margin: 5px 0; font-size: 26px; color: #1a1a1a; }
+    .title-section h2 { margin: 5px 0; font-size: 20px; color: #555; }
+    .viewer { background: white; border-radius: 12px; padding: 25px; max-width: 900px; margin: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    input, button, select { padding: 10px; margin: 5px; width: 80%; max-width: 400px; }
+    .input-hint { font-size: 12px; color: #888; margin-top: -5px; margin-bottom: 10px; }
+    iframe { width: 100%; height: 500px; border: none; margin-top: 20px; }
+    .info { margin-top: 20px; text-align: left; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <img src="Oman_2040_Vision.png" style="height:100px; object-fit:contain;" alt="Oman Vision 2040 Logo" />
+    <img src="Salalah UTAS logo.png" style="height:100px; object-fit:contain;" alt="UTAS Salalah Logo" />
+  </div>
+
+  <div class="title-section">
+    <h1>CSDT5205 - Blockchain and Distributed Ledger Technology</h1>
+    <h2>NFT Certificate Viewer</h2>
+  </div>
+
+  <div class="viewer">
+    <select id="mode" onchange="toggleMode()">
+      <option value="contract">🟢 Load from Smart Contract (Published on Sepolia)</option>
+      <option value="cid">🟡 Load using Metadata CID (Without Contract)</option>
+    </select>
+
+    <div id="contractSection">
+      <button onclick="connectWallet()">🔗 Connect MetaMask</button><br/>
+      <input type="text" id="contractAddress" placeholder="Enter Contract Address (Sepolia)"/>
+      <div class="input-hint">Example: 0x1234567890abcdef1234567890abcdef12345678</div>
+      <input type="text" id="tokenId" placeholder="Enter Token ID"/>
+      <div class="input-hint">Example: 0</div>
+      <button onclick="loadFromContract()">Load Certificate</button>
+    </div>
+
+    <div id="cidSection" style="display: none;">
+      <input type="text" id="metadataCid" placeholder="Enter Metadata CID"/>
+      <div class="input-hint">Example: bafkreihi7v5k5zmvef5xxxuqthalyv3aszr2iftnwfedmxb3etjayly2h4</div>
+      <button onclick="loadFromCID()">Load Certificate</button>
+    </div>
+
+    <div id="nftData" class="info"></div>
+    <iframe id="viewerFrame"></iframe>
+  </div>
+
+  <script>
+    let provider, signer;
+
+    function toggleMode() {
+      const mode = document.getElementById('mode').value;
+      document.getElementById('contractSection').style.display = (mode === 'contract') ? 'block' : 'none';
+      document.getElementById('cidSection').style.display = (mode === 'cid') ? 'block' : 'none';
+      document.getElementById('nftData').innerHTML = '';
+      document.getElementById('viewerFrame').src = '';
+    }
+
+    async function connectWallet() {
+      if (!window.ethereum) {
+        alert("MetaMask not detected.");
+        return;
+      }
+      await window.ethereum.request({ method: 'eth_requestAccounts' });
+      provider = new ethers.providers.Web3Provider(window.ethereum);
+      signer = provider.getSigner();
+      alert("Wallet connected: " + await signer.getAddress());
+    }
+
+    async function loadFromContract() {
+      const contractAddr = document.getElementById('contractAddress').value.trim();
+      const tokenId = document.getElementById('tokenId').value.trim();
+      if (!contractAddr || !tokenId) return alert("Please enter contract address and token ID.");
+
+      const abi = [
+        "function ownerOf(uint256 tokenId) view returns (address)",
+        "function tokenURI(uint256 tokenId) view returns (string)"
+      ];
+
+      try {
+        const contract = new ethers.Contract(contractAddr, abi, provider);
+        const owner = await contract.ownerOf(tokenId);
+        const uri = await contract.tokenURI(tokenId);
+        const metadataUrl = uri.replace("ipfs://", "https://gateway.pinata.cloud/ipfs/");
+        loadMetadata(metadataUrl, tokenId, owner);
+      } catch (err) {
+        console.error(err);
+        alert("Error loading from smart contract.");
+      }
+    }
+
+    async function loadFromCID() {
+      const cid = document.getElementById('metadataCid').value.trim();
+      if (!cid) return alert("Please enter a valid CID.");
+      const metadataUrl = `https://gateway.pinata.cloud/ipfs/${cid}`;
+      loadMetadata(metadataUrl, "N/A", "N/A");
+    }
+
+    async function loadMetadata(url, tokenId, owner) {
+      try {
+        const res = await fetch(url);
+        const data = await res.json();
+        document.getElementById('nftData').innerHTML = `
+          <p><strong>Token ID:</strong> ${tokenId}</p>
+          <p><strong>Owner:</strong> ${owner}</p>
+          <p><strong>Name:</strong> ${data.name}</p>
+          <p><strong>Student:</strong> ${data.student_name}</p>
+          <p><strong>University:</strong> ${data.university}</p>
+          <p><strong>Specialization:</strong> ${data.specialization}</p>
+          <p><strong>Graduation Date:</strong> ${data.graduation_date}</p>
+          <p><strong>GPA:</strong> ${data.gpa}</p>
+          <p><strong>Certificate ID:</strong> ${data.certificate_id}</p>
+          <img src="${data.image}" alt="Certificate Preview" style="max-width: 100%; border: 1px solid #ccc; margin-top: 10px;"/>
+        `;
+        document.getElementById('viewerFrame').src = data.animation_url.replace("ipfs://", "https://gateway.pinata.cloud/ipfs/");
+      } catch (err) {
+        console.error(err);
+        alert("Error loading metadata from IPFS.");
+      }
+    }
+  </script>
+</body>
+</html>
